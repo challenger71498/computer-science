@@ -41,3 +41,11 @@
 ### Two-Level Model
 
 - Similar to many-to-many model, but allows a user-level thread to be bound to a kernel thread.
+
+# General Strategies for Creating Multiple Threads
+
+- `Asynchronous Threading`: parent and child execute concurrently and independently of one another.
+  - (typically) Little data sharing
+  - Commonly used for designing responsive user interfaces.
+- `Synchronous Threading`: must wait for all of its children to terminate before it resumes.
+  - Involves significant data sharing
