@@ -1,77 +1,138 @@
-# Independent Process, Cooperating Process
+> In my opinion, `pipe` is the most important thing in this chapter. The rest of those are optional; you may read if you have an interest in.
 
-- `Independent Process`: does not share any data with other processes.
-- `Cooperating Process`: can affect or be affected by the other processes.
+# Pipes
 
-> Clearly, any process that shares data with other processes is a cooperating process.
+> Pipes are one of the first IPC mechanisms in early UNIX systems.
 
-Why provide an environment that allows process cooperation:
-1. Information Sharing: concurrent access to information.
-2. Computation Speedup: break into subtasks, run in parallel.
-3. Modularity: divide system functions into seperate processes or threads.
+Here's some considerations:
+- Bidirectional, or unidirectional?
+- Half duplex, or full duplex?
+  - `Half Duplex`: data can travel only one way at a time.
+  - `Full Duplex`: data can travel in both directions at the same time.
+- Must a relationship exist?
+- Over a network, or reside on the same machine?
 
-# Interprocess Communication (IPC)
+## Ordinary Pipes
 
-Cooperating process requires an interprocess communication.
+Allows two processes communicate in standard producer-consumer pattern.
 
-- Allow process to exchange data.
-- Send and recieve data to each other.
+- `Write End`: one end of the pipe which producer writes to.
+- `Read End`: the other end which consumer reads from.
 
-# IPC in Shared-Memory Systems
+Ordinary pipes are **unidirectional**, allowing only one-way communication.
 
-A `shared-memory` system is faster than `message-passing`.
+Ordinary pipes require a **parent-child relationship** between the communicating processes on both UNIX and Windows, which means that these pipes can be used only for the **same machine**.
 
-Normally, the operating system tries to prevent access overlapping between two or more processes; shared memory requires to remove this restriction.
+Ordinary pipes exist only while the processes are communicating wiht one another. When the process terminates, the pipe is also removed.
 
-These are belong to processes, not the operating system:
-- the **form** of the data
-- the **location**
-- responsibility of ensuring that there is **no writing on the same location simultaniously**
+### Ordinary Pipes in UNIX
 
-## Producer-Consumer Problem
+UNIX offers the function `pipe()` to use an ordinary pipe.
 
-> TBD, from my opinion this should be written to a seperated page.
+Since a pipe is a special type of file, the child inherits it.
 
-# IPC in Message-Passing Systems
+> Typically, a parent process creates a pipe and uses it to communicate with a child process that is creates via `fork()`.
 
-A message-passing system is useful for exchanging small amount of data.
+The parent and the child should initially close their unused ends of the pipe.
 
-Also, it is easier to implement in a distributed system.
+### Ordinary Pipes in Windows
 
-## Naming
+- `Anonymous Pipes`: Window version of ordinary pipes.
 
-### Direct Communication
+## Named Pipes
 
-Processes that wants to communicate must **explicity** name the recipient or sender.
+- Can be directional.
+- No parent-child relationship is required.
+  - In fact, in a typical scenario, a named pipe has several writers.
 
-An addressing could be symmetry or asymmetry:
-- `Symmetry`: sender and received process must name the other to communicate.
-- `Asymmetry`: only the sender names the recipient.
+### Named Pipes in UNIX (FIFO)
 
-> In direct communication, if the pid of the process has heen changed, all other dependent process definitions are must also be changed, which is undesirable.
+Only half-duplex trasmission is permitted.
 
-### Indirect Communication
+Processes must reside on the same machine. If not, `sockets` must be used.
 
-The messages are sent to nad received from `mailboxes` or `ports`.
+- `mkfifo()`: Creates FIFO.
 
-> A mailbox may be owned either by a **process** or by the **operating system**.
+### Named Pipes in Windows
 
-## Synchronization
+Full-duplex communication is allowed.
 
-- `Blocking` (`Synchronous`): A process must wait until the execution is finished.
-- `Nonblocking` (`Asynchronous`): A process may continue even if the execution is not finished.
+Processes may reside either on the same or different machines.
 
-> NOTE: On the internet, they classify blocking-nonblocking and sync-async as different. But the context in the book seems like both are the same. I'll look further on this later..
+- `CreateNamedPipe()`
+- `ConnectNamedPipe()`
 
-- `Blocking Send`: sending process is **blocked** until the message is received.
-- `Nonblocking Send`: sends the message and resumes operation.
-- `Blocking Receive`: receiver blocks until a message is available.
-- `Nonblocking Receive`: receiver retrieves a vaild message or null.
+# POSIX Shared Memory
 
-## Buffering
+- `shm_open()`: creates a shared-memory object.
+- `ftruncate()`: configures the size of the object in bytes.
+- `mmap()`: establishes a memory-mapped containg the shared-memory object.
+- `shm_unlink()`: removes a shared-memory object.
 
-- `Zero Capacity`: the sender must block until the recipient recieves the message.
-- `Bounded Capacity`: the sender may send until the queue is full; recipient gets the message from the queue.
-- `Unbounded Capacity`: the sender may send as many as it can; it never blocks.
+# Mach Message Passing
 
-Zero capacity is referred as `No Buffering`, the others are referred as `Automatic Buffering`.
+> Mach is included in the macOS and iOS operating systems.
+
+- `Tasks`: similar to process but have multiple threads of control and fewer associated resources.
+- `Messages`: carries out the most of communication on March, including intertask commuincation.
+
+## Port
+
+In short, a `port` is Mach version of the mailbox.
+
+- Port is unidirectional; for two-way communication, a response is sent to a seperate `reply port`.
+- Each port may have multiple senders, but only **one** receiver.
+
+### Port Rights
+
+`Port Rights` identifies the capabilities nessary for a task to interact with the port.
+
+Ownership of port rights is at the task level; all threads belonging to the same task share the same port rights.
+
+### Special Ports
+
+- `Task Self Port`: the kernel has receive rights to this; allows a task to send messages to the kernel.
+- `Notify Port`: the kernel send notifications to here.
+- `Bootstrap Port`: allows a task to register a port it has created with a system-wide `bootstrap server`.
+  -  Once a port has been registered, other tasks can look up the port in this registry and obtain rights for sending.
+
+## Messages
+
+Mach messages contain the following two fields:
+- Fixed-size message header: containing metadata of the message, such as size, source, destination, etc.
+- Variable-sized body
+
+- `Simple`: contains ordinary, unstructured user data.
+- `Complex`: may contain pointers to memory locations, can be used for transferring port rights.
+
+Functions of Mach messaage API are:
+- `mach_msg()`: sending and receiving messages.
+- `mach_msg_trap()`: system call to Mach kernel.
+- `mach_msg_overwrite_trap()`: handles the actual passing of the message.
+
+> The major problem wiht message systems has generally been poor performance caused by copying of messages from the sender's port to the receiver's port.
+>
+> The Mach message system attepts to avoid this by using virtual-memory-management techniques.
+>
+> Mach **maps** the address space containing the sender's message into the receiver's address space, make the message never actually copied.
+>
+> This technique provides a large performance boost but works only for intrasystem messages.
+
+# Windows
+
+- `Subsystems`: multiple operating environments; application programs communicate with these subsystems via a message-passing mechanism.
+> Note: Need more description about what the "Window Subsystem" is.
+- `Advanced Local Procedure Call` (`ALPC`): communication between two processes on the same machine, similar to the standard `Remote Procedure Call`, or `RPC`.
+  - `ALPC` is not the part of the Windows API; hence it is not visible to the application programmer.
+  - The RPC is handled indirectly through an ALPC procedure call.
+
+## Ports
+
+- `Connection Port`: a connection request from the client is sent to here.
+- `Communication Port`: consists a channel with two communication ports: one for client to server, the other for server to client.
+
+## Message-Passing Techniques
+
+1. Small messages (~256B): port's message queue is used.
+2. Larger messages: is passed through `section object`, region of shared memory.
+3. Too large: API which reads and writes directly into the address space.
